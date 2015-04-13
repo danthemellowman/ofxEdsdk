@@ -13,6 +13,7 @@ public:
 	void keyPressed(int key);
 	
 	ofxEdsdk::Camera camera;
-    
+    vector<ofTexture> textures;
+    vector<ofPixels> pixels;
     bool bIsRecordingMovie;
 };

@@ -11,7 +11,7 @@
 
 namespace ofxEdsdk {
 	
-	class Camera : public ofThread {
+	class Camera {
 	public:
 		Camera();
         void setDeviceId(int deviceId);
@@ -31,18 +31,19 @@ namespace ofxEdsdk {
 		ofTexture& getLiveTexture();
 		float getFrameRate();
         float getBandwidth();
-        
+
 		void takePhoto(bool blocking = false);
 		bool isPhotoNew();
 		void drawPhoto(float x, float y);
 		void drawPhoto(float x, float y, float width, float height);
 		bool savePhoto(string filename); // .jpg only
-		ofPixels& getPhotoPixels();
-		ofTexture& getPhotoTexture();
+		vector<ofPixels> getPhotoPixels();
+		vector<ofTexture> getPhotoTexture();
         
         void beginMovieRecording();
         void endMovieRecording();
         bool isMovieNew();
+        
         
     protected:
         void initialize();
@@ -55,6 +56,9 @@ namespace ofxEdsdk {
 		RateTimer fps;
         float bytesPerFrame;
 		
+        vector<ofPixels> photoPixels;
+        vector<EdsDirectoryItemRef> photos;
+        vector<ofBuffer> photoBuffers;
 		/*
 		 Live view data is read from the camera into liveBufferBack when DownloadEvfData()
 		 is called. Then the class is locked, and liveBufferBack is quickly pushed
@@ -76,8 +80,12 @@ namespace ofxEdsdk {
 		 does not decode photoBuffer.
 		 */
 		ofBuffer photoBuffer;
-		ofPixels photoPixels;
+//		ofPixels photoPixels;
 		ofTexture photoTexture;
+        
+//        vector<ofBuffer> photoBuffers;
+        vector<ofPixels> photosPixels;
+        vector<ofTexture> photoTextures;
 		
 		/*
 		 There are a few important state variables used for keeping track of what
