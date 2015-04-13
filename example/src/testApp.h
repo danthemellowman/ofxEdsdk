@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ofMain.h"
-
+#include "DelayTimer.h"
 #include "ofxEdsdk.h"
 
 class testApp : public ofBaseApp {
@@ -16,4 +16,8 @@ public:
     vector<ofTexture> textures;
     vector<ofPixels> pixels;
     bool bIsRecordingMovie;
+    
+    int mIndex;
+    
+    DelayTimer timer;
 };

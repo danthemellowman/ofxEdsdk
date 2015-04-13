@@ -11,7 +11,7 @@
 
 namespace ofxEdsdk {
 	
-	class Camera {
+    class Camera : public ofThread{
 	public:
 		Camera();
         void setDeviceId(int deviceId);
@@ -37,8 +37,11 @@ namespace ofxEdsdk {
 		void drawPhoto(float x, float y);
 		void drawPhoto(float x, float y, float width, float height);
 		bool savePhoto(string filename); // .jpg only
-		vector<ofPixels> getPhotoPixels();
-		vector<ofTexture> getPhotoTexture();
+		ofPixels& getPhotoPixel();
+		ofTexture getPhotoTexture();
+        vector<ofTexture> getPhotoTextures();
+        vector<ofPixels> getPhotoPixels();
+        
         
         void beginMovieRecording();
         void endMovieRecording();
@@ -57,7 +60,7 @@ namespace ofxEdsdk {
         float bytesPerFrame;
 		
         vector<ofPixels> photoPixels;
-        vector<EdsDirectoryItemRef> photos;
+        deque<EdsDirectoryItemRef> directoryItems;
         vector<ofBuffer> photoBuffers;
 		/*
 		 Live view data is read from the camera into liveBufferBack when DownloadEvfData()

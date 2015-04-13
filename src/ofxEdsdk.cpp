@@ -93,11 +93,11 @@ namespace ofxEdsdk {
     void Camera::setup() {
         initialize();
         startCapture();
-        //startThread();
+        startThread();
     }
     
     bool Camera::close() {
-        //stopThread();
+        stopThread();
         // for some reason waiting for the thread keeps it from
         // completing, but sleeping then stopping capture is ok.
         ofSleepMillis(100);
@@ -117,13 +117,12 @@ namespace ofxEdsdk {
     
     void Camera::update() {
         if(connected){
-            //            lock();
-            captureLoop();
+            lock();
             if(liveBufferMiddle.size() > 0) {
                 // decoding the jpeg in the main thread allows the capture thread to run in a tighter loop.
                 swap(liveBufferFront, liveBufferMiddle.front());
                 liveBufferMiddle.pop();
-                //                unlock();
+                unlock();
                 ofLoadImage(livePixels, *liveBufferFront);
                 livePixels.rotate90(orientationMode);
                 if(liveTexture.getWidth() != livePixels.getWidth() ||
@@ -131,12 +130,12 @@ namespace ofxEdsdk {
                     liveTexture.allocate(livePixels.getWidth(), livePixels.getHeight(), GL_RGB8);
                 }
                 liveTexture.loadData(livePixels);
-                //                lock();
+                lock();
                 liveDataReady = true;
                 frameNew = true;
-                //                unlock();
+                unlock();
             } else {
-                //                unlock();
+                unlock();
             }
         }
     }
@@ -170,26 +169,26 @@ namespace ofxEdsdk {
     
     float Camera::getFrameRate() {
         float frameRate;
-        //        lock();
+        lock();
         frameRate = fps.getFrameRate();
-        //        unlock();
+        unlock();
         return frameRate;
     }
     
     float Camera::getBandwidth() {
-        //        lock();
+        lock();
         float bandwidth = bytesPerFrame * fps.getFrameRate();
-        //        unlock();
+        unlock();
         return bandwidth;
     }
     
     void Camera::takePhoto(bool blocking) {
-        //        lock();
+        lock();
         photoPixels.clear();
         photoBuffer.clear();
         photoTextures.clear();
         needToTakePhoto = true;
-        //        unlock();
+        unlock();
         if(blocking) {
             while(!photoNew) {
                 ofSleepMillis(10);
@@ -199,29 +198,35 @@ namespace ofxEdsdk {
     
     void Camera::beginMovieRecording()
     {
-        //        lock();
+        lock();
         needToStartRecording = true;
-        //        unlock();
+        unlock();
     }
     
     void Camera::endMovieRecording()
     {
-        //        lock();
+        lock();
         needToStopRecording = true;
-        //        unlock();
+        unlock();
     }
     
     ofPixels& Camera::getLivePixels() {
         return livePixels;
     }
     
+    
     vector<ofPixels> Camera::getPhotoPixels() {
-        //        if(needToDecodePhoto) {
-        //            ofLoadImage(photoPixels, photoBuffer);
-        //            photoPixels.rotate90(orientationMode);
-        //            needToDecodePhoto = false;
-        //        }
         return photoPixels;
+    }
+    
+    ofPixels& Camera::getPhotoPixel() {
+        if(needToDecodePhoto) {
+            photoPixels.push_back(ofPixels());
+            ofLoadImage(photoPixels.back(), photoBuffers.back());
+            photoPixels.back().rotate90(orientationMode);
+            needToDecodePhoto = false;
+        }
+        return photoPixels.back();
     }
     
     unsigned int Camera::getWidth() const {
@@ -247,34 +252,42 @@ namespace ofxEdsdk {
     }
     
     void Camera::drawPhoto(float x, float y) {
-        //        if(photoDataReady) {
-        //            ofPixels& photoPixels = getPhotoPixels();
-        //            draw(x, y, getWidth(), getHeight());
-        //        }
+        if(photoDataReady) {
+            ofPixels& photoPixels = getPhotoPixel();
+            drawPhoto(x, y, getWidth(), getHeight());
+        }
     }
     
     void Camera::drawPhoto(float x, float y, float width, float height) {
         if(photoDataReady) {
-//            getPhotoTexture().draw(x, y, width, height);
+            ofPixels& photoPixels = getPhotoPixel();
+            getPhotoTexture().draw(x, y, width, height);
         }
     }
+    vector<ofTexture> Camera::getPhotoTextures(){
+        return photoTextures;
+    }
     
-    vector<ofTexture> Camera::getPhotoTexture() {
+    
+    ofTexture Camera::getPhotoTexture() {
         if(photoDataReady) {
             if(needToUpdatePhoto) {
-                photoTextures.resize(photoPixels.size());
-                for(int i = 0; i < photoPixels.size(); i++){
-                    if(photoTextures[i].getWidth() != photoPixels[i].getWidth() ||
-                       photoTextures[i].getHeight() != photoPixels[i].getHeight()) {
-                        photoTextures[i].allocate(photoPixels[i].getWidth(), photoPixels[i].getHeight(), GL_RGB8);
-                    }
-                    photoTextures[i].loadData(photoPixels[i]);
+                photoTextures.push_back(ofTexture());
+                if(photoTextures.back().getWidth() != photoPixels.back().getWidth() ||
+                   photoTextures.back().getHeight() != photoPixels.back().getHeight()) {
+                    photoTextures.back().allocate(photoPixels.back().getWidth(), photoPixels.back().getHeight(), GL_RGB8);
                     
+                    photoTextures.back().loadData(photoPixels.back());
+                    photoTexture = photoTextures.back();
                 }
             }
             needToUpdatePhoto = false;
         }
-        return photoTextures;
+        if(photoTextures.size() > 0){
+            return photoTextures.back();
+        }else{
+            return photoTexture;
+        }
     }
     
     bool Camera::isLiveDataReady() const {
@@ -288,25 +301,11 @@ namespace ofxEdsdk {
     
     void Camera::setDownloadImage(EdsDirectoryItemRef directoryItem) {
         try {
-            photoBuffers.push_back(ofBuffer());
-            photoPixels.push_back(ofPixels());
-            EdsDirectoryItemInfo dirItemInfo = Eds::DownloadImage(directoryItem, photoBuffers.back());
-            ofLogVerbose() << "Downloaded item: " << (int) (photoBuffers.back().size() / 1024) << " KB";
-            //                lock();
-            ofLoadImage(photoPixels.back(), photoBuffers.back());
-            photoPixels.back().rotate90(orientationMode);
             
-            //            if (dirItemInfo.format == OFX_EDSDK_JPG_FORMAT) {
-            //                photoNew = true;
-            //            } else if (dirItemInfo.format == OFX_EDSDK_MOV_FORMAT) {
-            //                movieNew = true;
-            //            }
-            if(photoBuffers.size() == 10){
-                needToUpdatePhoto = true;
-                photoNew = true;
-                photoDataReady = true;
-            }
-            //                unlock();
+            directoryItems.push_back(directoryItem);
+            lock();
+            needToDownloadImage = true;
+            unlock();
         } catch (Eds::Exception& e) {
             ofLogError() << "Error while downloading item: " << e.what();
         }
@@ -314,9 +313,9 @@ namespace ofxEdsdk {
     }
     
     void Camera::setSendKeepAlive() {
-        //        lock();
+        lock();
         needToSendKeepAlive = true;
-        //        unlock();
+        unlock();
     }
     
     bool Camera::savePhoto(string filename) {
@@ -326,9 +325,9 @@ namespace ofxEdsdk {
     void Camera::resetLiveView() {
         if(connected) {
             Eds::StartLiveview(camera);
-            //            lock();
+            lock();
             lastResetTime = ofGetElapsedTimef();
-            //            unlock();
+            unlock();
         }
     }
     
@@ -389,26 +388,27 @@ namespace ofxEdsdk {
         }
     }
     
+    
     void Camera::captureLoop() {
         if(liveViewReady) {
             if(Eds::DownloadEvfData(camera, *liveBufferBack)) {
-                //                lock();
+                lock();
                 fps.tick();
                 bytesPerFrame = ofLerp(bytesPerFrame, liveBufferBack->size(), .01);
                 swap(liveBufferBack, liveBufferMiddle.back());
                 liveBufferMiddle.push();
-                //                unlock();
+                unlock();
             }
         }
         
         if(needToTakePhoto) {
             try {
-                Eds::SendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_Completely_NonAF);
+                Eds::SendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_Completely);
                 ofSleepMillis(3000);
                 Eds::SendCommand(camera, kEdsCameraCommand_PressShutterButton, kEdsCameraCommand_ShutterButton_OFF);
-                //                lock();
+                lock();
                 needToTakePhoto = false;
-                //                unlock();
+                unlock();
             } catch (Eds::Exception& e) {
                 ofLogError() << "Error while taking a picture: " << e.what();
             }
@@ -421,9 +421,9 @@ namespace ofxEdsdk {
                 
                 EdsUInt32 record_start = 4; // Begin movie shooting
                 EdsSetPropertyData(camera, kEdsPropID_Record, 0, sizeof(record_start), &record_start);
-                //                lock();
+                lock();
                 needToStartRecording = false;
-                //                unlock();
+                unlock();
             } catch (Eds::Exception& e) {
                 ofLogError() << "Error while beginning to record: " << e.what();
             }
@@ -433,9 +433,9 @@ namespace ofxEdsdk {
             try {
                 EdsUInt32 record_stop = 0; // End movie shooting
                 EdsSetPropertyData(camera, kEdsPropID_Record, 0, sizeof(record_stop), &record_stop);
-                //                lock();
+                lock();
                 needToStopRecording = false;
-                //                unlock();
+                unlock();
             } catch (Eds::Exception& e) {
                 ofLogError() << "Error while stopping to record: " << e.what();
             }
@@ -449,13 +449,35 @@ namespace ofxEdsdk {
             } catch (Eds::Exception& e) {
                 ofLogError() << "Error while sending kEdsCameraCommand_ExtendShutDownTimer with Eds::SendStatusCommand: " << e.what();
             }
-            //            lock();
+            lock();
             needToSendKeepAlive = false;
-            //            unlock();
+            unlock();
         }
         
-        if(needToDownloadImage) {
-            
+        if(directoryItems.size() > 0 && needToDownloadImage) {
+            try {
+                
+                ofBuffer buff;
+                EdsDirectoryItemInfo dirItemInfo = Eds::DownloadImage(directoryItems.front(), buff);
+                ofLogVerbose() << "Downloaded item: " << (int) (buff.size() / 1024) << " KB";
+                
+                lock();
+                photoBuffers.push_back(buff);
+                photoDataReady = true;
+                needToDecodePhoto = true;
+                needToUpdatePhoto = true;
+                
+                if (dirItemInfo.format == OFX_EDSDK_JPG_FORMAT) {
+                    photoNew = true;
+                } else if (dirItemInfo.format == OFX_EDSDK_MOV_FORMAT) {
+                    movieNew = true;
+                }
+                directoryItems.pop_front();
+                
+                unlock();
+            } catch (Eds::Exception& e) {
+                ofLogError() << "Error while downloading item: " << e.what();
+            }
         }
         
         float timeSinceLastReset = ofGetElapsedTimef() - lastResetTime;
@@ -465,16 +487,18 @@ namespace ofxEdsdk {
         
     }
     
+    
+    
     void Camera::threadedFunction() {
-        //#if defined(TARGET_WIN32)
-        //        CoInitializeEx(NULL, 0x0); // COINIT_APARTMENTTHREADED in SDK docs
-        //#endif
-        //        while(isThreadRunning()) {
-        //            captureLoop();
-        //            ofSleepMillis(5);
-        //        }
-        //#if defined(TARGET_WIN32)
-        //        CoUninitialize();
-        //#endif
+#if defined(TARGET_WIN32)
+        CoInitializeEx(NULL, 0x0); // COINIT_APARTMENTTHREADED in SDK docs
+#endif
+        while(connected) {
+            captureLoop();
+            ofSleepMillis(5);
+        }
+#if defined(TARGET_WIN32)
+        CoUninitialize();
+#endif
     }
 }
